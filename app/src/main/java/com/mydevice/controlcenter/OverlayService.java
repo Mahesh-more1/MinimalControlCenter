@@ -3,10 +3,10 @@ package com.mydevice.controlcenter;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.graphics.drawable.GradientDrawable;
 import android.hardware.camera2.CameraManager;
-import android.net.wifi.WifiManager;
-import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
 import android.view.Gravity;
@@ -20,39 +20,54 @@ import android.widget.Toast;
 public class OverlayService extends Service {
     private WindowManager windowManager;
     private View overlayView;
-    private View triggerHandle;
+    private View triggerPill;
     private boolean isTorchOn = false;
+    private boolean isPanelOpen = false;
 
     @Override
     public void onCreate() {
         super.onCreate();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
 
-        // 1. Create a tiny, invisible top-edge swipe/tap trigger (consumes 0 RAM)
-        createTriggerHandle();
-
-        // 2. Inflate the full One UI control center layout
+        // 1. Inflate the full One UI control center layout
         LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
         overlayView = inflater.inflate(R.layout.view_control_center, null);
 
         setupPanelControls();
+
+        // 2. Create a clearly visible floating pull-tab / pill at the top center
+        createVisiblePullHandle();
     }
 
-    private void createTriggerHandle() {
-        triggerHandle = new View(this);
-        triggerHandle.setBackgroundColor(0x01000000); // 99.9% transparent
+    private void createVisiblePullHandle() {
+        triggerPill = new View(this);
+        
+        // Styled as a clean, visible rounded pill (One UI Edge Tab)
+        GradientDrawable pillShape = new GradientDrawable();
+        pillShape.setShape(GradientDrawable.RECTANGLE);
+        pillShape.setCornerRadius(16);
+        pillShape.setColor(Color.parseColor("#80FFFFFF")); // 50% semi-transparent white bar
+        triggerPill.setBackground(pillShape);
 
         WindowManager.LayoutParams handleParams = new WindowManager.LayoutParams(
-            200, // Width: 200px at center top
-            40,  // Height: 40px touch zone
+            220, // 220px wide
+            30,  // 30px high bar
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         );
         handleParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        handleParams.y = 10; // 10px below top camera notch
 
-        triggerHandle.setOnClickListener(v -> showPanel());
-        windowManager.addView(triggerHandle, handleParams);
+        triggerPill.setOnClickListener(v -> {
+            if (isPanelOpen) {
+                hidePanel();
+            } else {
+                showPanel();
+            }
+        });
+
+        windowManager.addView(triggerPill, handleParams);
     }
 
     private void showPanel() {
@@ -62,17 +77,19 @@ public class OverlayService extends Service {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         );
         panelParams.gravity = Gravity.TOP;
         windowManager.addView(overlayView, panelParams);
+        isPanelOpen = true;
     }
 
     private void hidePanel() {
         if (overlayView.getParent() != null) {
             windowManager.removeView(overlayView);
         }
+        isPanelOpen = false;
     }
 
     private void setupPanelControls() {
@@ -136,8 +153,8 @@ public class OverlayService extends Service {
     @Override
     public void onDestroy() {
         super.onDestroy();
-        if (triggerHandle != null && triggerHandle.getParent() != null) {
-            windowManager.removeView(triggerHandle);
+        if (triggerPill != null && triggerPill.getParent() != null) {
+            windowManager.removeView(triggerPill);
         }
         hidePanel();
     }
